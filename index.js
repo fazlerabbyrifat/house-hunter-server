@@ -25,14 +25,14 @@ const client = new MongoClient(uri, {
 });
 
 async function run() {
-  const userCollection = client.db("houseDB").collection("users");
+  const usersCollection = client.db("houseDB").collection("users");
 
   try {
     app.post("/register", async (req, res) => {
-      const { name, email, password, role } = req.body;
+      const { name, email, password, role, number } = req.body;
 
       try {
-        const existingUser = await userCollection.findOne({ email });
+        const existingUser = await usersCollection.findOne({ email });
         if (existingUser) {
           return res.status(400).json({ message: "User already exists" });
         }
@@ -45,13 +45,38 @@ async function run() {
           email,
           password: hashedPassword,
           role,
+          number,
         };
 
-        const result = userCollection.insertOne(newUser)
-        res.send(result);
+        const result = await usersCollection.insertOne(newUser);
+        const token = jwt.sign({ userId: result.insertedId }, "secretKey");
+        res.status(201).json({ token, user: result.ops[0] });
       } catch (error) {
         console.error("Registration error", error);
         res.status(500).json({ message: "Internal server error" });
+      }
+    });
+
+    app.post("/login", async (req, res) => {
+      try {
+        const { email, password } = req.body;
+
+        const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(401).json({ error: "Invalid email or password" });
+        }
+        const passwordMatch = await bcrypt.compare(password, user.password);
+        if (!passwordMatch) {
+          return res.status(401).json({ error: "Invalid email or password" });
+        }
+
+        // Generate a JWT
+        const token = jwt.sign({ userId: user._id }, "secretKey");
+
+        res.status(200).json({ token, user });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
 
