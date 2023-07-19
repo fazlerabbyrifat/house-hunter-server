@@ -10,6 +10,27 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+const verifyJWT = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  console.log('Received token:', token);
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, user) => {
+    if (err) {
+      console.error('Error verifying token:', err);
+      return res.status(403).json({ error: 'Invalid token' });
+    }
+    console.log('Verified user:', user);
+    req.user = user;
+    next();
+  });
+};
+
 const username = process.env.DB_USER;
 const password = process.env.DB_PASSWORD;
 
@@ -50,7 +71,7 @@ async function run() {
 
         const result = await usersCollection.insertOne(newUser);
         const token = jwt.sign({ userId: result.insertedId }, "secretKey");
-        res.status(201).json({ token, user: result.ops[0] });
+        res.status(201).json({ token, user: result });
       } catch (error) {
         console.error("Registration error", error);
         res.status(500).json({ message: "Internal server error" });
@@ -74,6 +95,16 @@ async function run() {
         const token = jwt.sign({ userId: user._id }, "secretKey");
 
         res.status(200).json({ token, user });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Internal server error" });
+      }
+    });
+
+    app.get("/users", async (req, res) => {
+      try {
+        const users = await usersCollection.find().toArray();
+        res.status(200).json({ users });
       } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Internal server error" });
